@@ -19,26 +19,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message:
         return
-    user = message.from_user
-    chat_id = update.effective_chat.id
 
+    # 📢 अगर message किसी channel से आया है (forwards या channel posts)
+    if message.sender_chat and message.sender_chat.type == "channel":
+        # Channel messages ignore करो
+        return
+
+    user = message.from_user
+    if not user:
+        return
+
+    chat_id = update.effective_chat.id
     text = message.text or message.caption or ""
+
+    # 🔍 अगर text में कोई link नहीं है तो कुछ मत करो
     if not URL_RE.search(text):
         return
 
-    # 🔐 Admins को ignore करो
+    # 👑 Owner/Admin को Ignore करो
     try:
         member = await context.bot.get_chat_member(chat_id, user.id)
         if member.status in ("administrator", "creator"):
+            # ये admin या owner है — ignore
             return
-    except:
-        pass
+    except Exception as e:
+        print("Admin check failed:", e)
+        return
 
-    # 🧹 Link delete
+    # 🧹 Delete message
     try:
         await message.delete()
-    except:
-        pass
+    except Exception as e:
+        print("Delete failed:", e)
 
     # 🧮 Warning count update
     user_id = user.id
@@ -48,7 +60,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ⚠️ Warning message
     if warnings <= MAX_WARNINGS:
         remaining = MAX_WARNINGS - warnings
-        warn_text = f"⚠️ @{user.username or user.first_name}, links are not allowed!\nYou have {remaining if remaining>0 else 0} warnings left before ban."
+        warn_text = (
+            f"⚠️ @{user.username or user.first_name}, links are not allowed!\n"
+            f"You have {remaining if remaining>0 else 0} warnings left before ban."
+        )
         try:
             await context.bot.send_message(chat_id=chat_id, text=warn_text)
         except:
@@ -57,7 +72,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 🚫 Ban user after 3 warnings
         try:
             await context.bot.ban_chat_member(chat_id, user_id)
-            await context.bot.send_message(chat_id=chat_id, text=f"🚫 @{user.username or user.first_name} has been banned for sending too many links.")
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"🚫 @{user.username or user.first_name} has been banned for sending too many links."
+            )
         except Exception as e:
             print("Ban failed:", e)
 
